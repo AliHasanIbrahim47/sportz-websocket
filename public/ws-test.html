@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sportz WebSocket Test</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, sans-serif;
+      line-height: 1.5;
+    }
+
+    body {
+      margin: 0 auto;
+      max-width: 720px;
+      padding: 1.5rem;
+    }
+
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.5rem;
+    }
+
+    .subtitle {
+      margin: 0 0 1.5rem;
+      color: #666;
+    }
+
+    section {
+      margin-bottom: 1.5rem;
+      padding: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    label {
+      font-weight: 600;
+    }
+
+    input[type="number"] {
+      width: 6rem;
+      padding: 0.4rem 0.5rem;
+    }
+
+    button {
+      padding: 0.45rem 0.75rem;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .status.connected {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .status.disconnected {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+
+    .matches {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.75rem;
+    }
+
+    .match-chip {
+      padding: 0.35rem 0.6rem;
+      border: 1px solid #999;
+      border-radius: 6px;
+      background: transparent;
+      font-size: 0.875rem;
+    }
+
+    #log {
+      margin: 0;
+      padding: 0.75rem;
+      min-height: 280px;
+      max-height: 420px;
+      overflow: auto;
+      background: #111;
+      color: #eee;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.8125rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-entry {
+      margin: 0 0 0.5rem;
+    }
+
+    .log-entry time {
+      color: #9ca3af;
+    }
+
+    .log-entry .type {
+      color: #93c5fd;
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <h1>Sportz WebSocket Test</h1>
+  <p class="subtitle">Connect to <code id="ws-url"></code> and subscribe to live match events.</p>
+
+  <section>
+    <div class="row">
+      <span id="status" class="status disconnected">Disconnected</span>
+      <button id="connect-btn" type="button">Connect</button>
+      <button id="disconnect-btn" type="button" disabled>Disconnect</button>
+      <button id="clear-log-btn" type="button">Clear log</button>
+    </div>
+  </section>
+
+  <section>
+    <div class="row">
+      <label for="match-id">Match ID</label>
+      <input id="match-id" type="number" min="1" step="1" placeholder="1">
+      <button id="subscribe-btn" type="button" disabled>Subscribe</button>
+      <button id="unsubscribe-btn" type="button" disabled>Unsubscribe</button>
+    </div>
+    <div class="row" style="margin-top: 0.75rem;">
+      <button id="load-matches-btn" type="button">Load matches</button>
+      <span id="matches-status"></span>
+    </div>
+    <div id="matches" class="matches"></div>
+  </section>
+
+  <section>
+    <h2 style="margin-top: 0; font-size: 1rem;">Event log</h2>
+    <div id="log"></div>
+  </section>
+
+  <script>
+    const wsUrl = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+    document.getElementById('ws-url').textContent = wsUrl;
+
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const matchIdInput = document.getElementById('match-id');
+    const connectBtn = document.getElementById('connect-btn');
+    const disconnectBtn = document.getElementById('disconnect-btn');
+    const subscribeBtn = document.getElementById('subscribe-btn');
+    const unsubscribeBtn = document.getElementById('unsubscribe-btn');
+    const loadMatchesBtn = document.getElementById('load-matches-btn');
+    const matchesEl = document.getElementById('matches');
+    const matchesStatusEl = document.getElementById('matches-status');
+
+    let ws = null;
+
+    function setConnected(connected) {
+      statusEl.textContent = connected ? 'Connected' : 'Disconnected';
+      statusEl.className = `status ${connected ? 'connected' : 'disconnected'}`;
+      connectBtn.disabled = connected;
+      disconnectBtn.disabled = !connected;
+      subscribeBtn.disabled = !connected;
+      unsubscribeBtn.disabled = !connected;
+    }
+
+    function appendLog(type, payload) {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+
+      const time = document.createElement('time');
+      time.textContent = new Date().toLocaleTimeString();
+
+      const label = document.createElement('span');
+      label.className = 'type';
+      label.textContent = type;
+
+      const body = document.createElement('span');
+      body.textContent = payload ? ` ${JSON.stringify(payload)}` : '';
+
+      entry.append(time, ' ', label, body);
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function sendMessage(message) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        appendLog('client_error', { message: 'WebSocket is not connected' });
+        return;
+      }
+
+      ws.send(JSON.stringify(message));
+      appendLog('sent', message);
+    }
+
+    function connect() {
+      if (ws) return;
+
+      ws = new WebSocket(wsUrl);
+
+      ws.addEventListener('open', () => {
+        setConnected(true);
+        appendLog('system', { message: 'Connected' });
+      });
+
+      ws.addEventListener('message', (event) => {
+        try {
+          appendLog('received', JSON.parse(event.data));
+        } catch {
+          appendLog('received', { raw: event.data });
+        }
+      });
+
+      ws.addEventListener('close', () => {
+        appendLog('system', { message: 'Disconnected' });
+        ws = null;
+        setConnected(false);
+      });
+
+      ws.addEventListener('error', () => {
+        appendLog('system', { message: 'Connection error' });
+      });
+    }
+
+    function disconnect() {
+      if (!ws) return;
+      ws.close();
+    }
+
+    function getMatchId() {
+      const value = Number(matchIdInput.value);
+      if (!Number.isInteger(value) || value < 1) {
+        appendLog('client_error', { message: 'Enter a valid match ID' });
+        return null;
+      }
+      return value;
+    }
+
+    async function loadMatches() {
+      matchesStatusEl.textContent = 'Loading…';
+      matchesEl.replaceChildren();
+
+      try {
+        const response = await fetch('/matches?limit=20');
+        const json = await response.json();
+
+        if (!response.ok) {
+          throw new Error(json.error || 'Failed to load matches');
+        }
+
+        const matches = json.data || [];
+
+        if (matches.length === 0) {
+          matchesStatusEl.textContent = 'No matches found.';
+          return;
+        }
+
+        matchesStatusEl.textContent = `${matches.length} match(es)`;
+
+        for (const match of matches) {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'match-chip';
+          button.textContent = `#${match.id} ${match.homeTeam} vs ${match.awayTeam}`;
+          button.addEventListener('click', () => {
+            matchIdInput.value = String(match.id);
+          });
+          matchesEl.appendChild(button);
+        }
+      } catch (error) {
+        matchesStatusEl.textContent = error.message;
+      }
+    }
+
+    connectBtn.addEventListener('click', connect);
+    disconnectBtn.addEventListener('click', disconnect);
+    subscribeBtn.addEventListener('click', () => {
+      const matchId = getMatchId();
+      if (matchId !== null) sendMessage({ type: 'subscribe', matchId });
+    });
+    unsubscribeBtn.addEventListener('click', () => {
+      const matchId = getMatchId();
+      if (matchId !== null) sendMessage({ type: 'unsubscribe', matchId });
+    });
+    loadMatchesBtn.addEventListener('click', loadMatches);
+    document.getElementById('clear-log-btn').addEventListener('click', () => {
+      logEl.replaceChildren();
+    });
+
+    setConnected(false);
+    connect();
+    loadMatches();
+  </script>
+</body>
+</html>

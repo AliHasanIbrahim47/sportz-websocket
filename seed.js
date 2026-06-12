@@ -16,7 +16,7 @@ if (!API_URL) {
   throw new Error("API_URL is required to seed via REST endpoints.");
 }
 
-const DEFAULT_DATA_FILE = new URL("../data/data.json", import.meta.url);
+const DEFAULT_DATA_FILE = new URL("./data.json", import.meta.url);
 
 async function readJsonFile(fileUrl) {
   const raw = await fs.readFile(fileUrl, "utf8");

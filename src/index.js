@@ -1,9 +1,14 @@
 import express from 'express';
 import http from 'http';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { matchRouter } from './routes/matches.js';
 import { commentaryRouter } from './routes/commentary.js';
 import { attachWebSocketServer } from './ws/server.js';
 import { securityMiddleware } from './arcjet.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.join(__dirname, '../public');
 
 const PORT = Number(process.env.PORT || 8000);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -15,6 +20,10 @@ app.use(express.json());
 
 app.get('/', (req, res) => {
   res.send('h');
+});
+
+app.get('/ws-test', (req, res) => {
+  res.sendFile(path.join(publicDir, 'ws-test.html'));
 });
 
 app.use(securityMiddleware());
@@ -31,4 +40,5 @@ server.listen(PORT, HOST, () => {
 
   console.log(`Server is running on ${baseUrl}`);
   console.log(`WebSocket is running on ${baseUrl.replace('http', 'ws')}/ws`);
+  console.log(`WebSocket test page: ${baseUrl}/ws-test`);
 });
